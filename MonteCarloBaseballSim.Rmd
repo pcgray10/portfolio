@@ -1,0 +1,306 @@
+---
+title: "MonteCarloBaseballSim"
+output:
+  html_document:
+    df_print: paged
+date: "2024-11-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+
+
+# Monte Carlo Simulation: 
+
+# List all batting outcomes:
+batting_outcomes <- c("2B", "HR","OUT", "3B", "BB", "1B", "HBP")
+batting_probs <- c(0.3,0.2,0.2,0.1,0.1,0.05,0.05)
+
+num_outs <- 0 # Track # of Outs
+score <- 0    # Track the score
+base_runner <- c(0,0,0) # Track Runners
+
+while (num_outs <3)
+{
+  # At-Bat Result
+  result <- sample(batting_outcomes, 1, prob = batting_probs)
+  # If Out,
+  if (result == "OUT")
+  {
+    num_outs = num_outs + 1 # Increase the Outs
+  }
+  # If HR
+  if (result == "HR")
+  {
+    if (base_runner[2] == 1)
+    {
+      score = score + 2 # Increase Score by 2
+      base_runner[2] = 0 # Adjust the base runners
+    }else if (base_runner[3] == 1) {
+      
+      score = score + 2 # Increase Score by 2
+      base_runner[3] = 0 # Adjust the base runners
+    }
+    else 
+    {
+      score = score + 1
+    }
+  }
+  
+  #If Walked
+  if (result == "BB" | result == "HBP") {
+    # Bases Loaded? YES
+    if (base_runner[1] == 1 & base_runner[2] == 1 & base_runner[3] == 1) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+      base_runner[3] == 1
+      score = score + 1
+    }
+    #Base Runner on first and second
+    else if (base_runner[1] == 1 & base_runner[2]) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+      base_runner[3] == 1
+    }
+    #base runner on first
+    else if (base_runner[1] == 1) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+    }
+    
+    #Empty bases
+    else {
+      base_runner[1] == 1
+    }
+  }
+  
+  #If 1B
+  if (result == "1B") {
+    # Bases Loaded? YES
+    if (base_runner[1] == 1 & base_runner[2] == 1 & base_runner[3] == 1) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+      base_runner[3] == 1
+      score = score + 1
+    }
+    #Base Runner on first and second
+    else if (base_runner[1] == 1 & base_runner[2]) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+      base_runner[3] == 1
+    }
+    #base runner on first
+    else if (base_runner[1] == 1) {
+      base_runner[2] == 1
+      base_runner[1] == 1
+    }
+    
+    #Empty bases
+    else {
+      base_runner[1] == 1
+    }
+    
+    
+  }
+  # If 2B
+  if (result == "2B")
+  {
+    # Base Runner on Second? N0
+    if (base_runner[2] == 0 & base_runner[3] == 0){base_runner[2] = 1}
+    # Base Runner on Second? YES
+    else if(base_runner[2] == 1)
+      {
+        base_runner[2] = 1 # New Hitter is on Second
+        score = score + 1   # score increases by 1
+    }
+    # Base Runner on Third? YES
+    else if(base_runner[3] == 1)
+    {
+      base_runner[3] = 0 # Runner on third scores
+      score = score + 1   # score increases by 1
+      base_runner[2] = 1 # New Hitter is on Second
+    }
+  }
+    # If 3B
+    if (result == "3B") 
+    {
+      # Base Runner on Third? N0
+      if (base_runner[3] == 0 & base_runner[2] == 0){base_runner[3] = 1}
+      # Base Runner on Second? YES
+      else if(base_runner[2] == 1)
+      {
+        base_runner[2] = 0 # Runner on second scores
+        score = score + 1   # score increases by 1
+        base_runner[3] = 1 # New Hitter is on third
+      }
+      else if (base_runner[3] == 1) {
+        score = score + 1 # Runner on third scores
+        base_runner[3] = 1 # New hitter on third
+      }
+    }
+    
+  
+  cat(sprintf("At Bat: %s ; Score %i ; Number of Outs: %i; ",result, score,num_outs))
+  cat("Base Runner:", base_runner, "\n")
+}
+```
+
+
+```{r}
+
+batting_outcomes <- c("2B", "HR","OUT", "3B", "BB", "1B", "HBP")
+batting_probs <- c(0.1,0.2,0.2,0.1,0.1,0.1,0.2)
+
+# Let's repeat this from multiple inning
+num_inning <- 4
+score_tracker <- rep(0, num_inning)
+
+for (i in 1:num_inning)
+{
+  
+  num_outs <- 0 # Track # of Outs
+  score <- 0    # Track the score
+  base_runner <- c(0,0,0) # Track Runners
+  
+  while (num_outs <3)
+  {
+    # At-Bat Result
+    result <- sample(batting_outcomes, 1, prob = batting_probs)
+    # If Out,
+    if (result == "OUT")
+    {
+      num_outs = num_outs + 1 # Increase the Outs
+    }
+    # If HR
+    if (result == "HR")
+    {
+      if (base_runner[2] == 1)
+      {
+        score = score + 2 # Increase Score by 2
+        base_runner[2] = 0 # Adjust the base runners
+      }else if (base_runner[3] == 1) {
+        
+        score = score + 2 # Increase Score by 2
+        base_runner[3] = 0 # Adjust the base runners
+      }
+      else 
+      {
+        score = score + 1
+      }
+    }
+    
+    #If Walked
+    if (result == "BB" | result == "HBP") {
+      # Bases Loaded? YES
+      if (base_runner[1] == 1 & base_runner[2] == 1 & base_runner[3] == 1) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+        base_runner[3] = 1
+        score = score + 1
+      }
+      #Base Runner on first and second
+      else if (base_runner[1] == 1 & base_runner[2]) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+        base_runner[3] = 1
+      }
+      #base runner on first
+      else if (base_runner[1] == 1) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+      }
+      
+      #Empty bases
+      else {
+        base_runner[1] = 1
+      }
+    }
+    
+    #If 1B
+    if (result == "1B") {
+      # Bases Loaded? YES
+      if (base_runner[1] == 1 & base_runner[2] == 1 & base_runner[3] == 1) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+        base_runner[3] = 1
+        score = score + 1
+      }
+      #Base Runner on first and second
+      else if (base_runner[1] == 1 & base_runner[2]) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+        base_runner[3] = 1
+      }
+      #base runner on first
+      else if (base_runner[1] == 1) {
+        base_runner[2] = 1
+        base_runner[1] = 1
+      }
+      
+      #Empty bases
+      else {
+        base_runner[1] = 1
+      }
+    }
+    # If 2B
+    if (result == "2B")
+    {
+      # Base Runner on Second? N0
+      if (base_runner[2] == 0 & base_runner[3] == 0){base_runner[2] = 1}
+      # Base Runner on Second? YES
+      else if(base_runner[2] == 1)
+      {
+        base_runner[2] = 1 # New Hitter is on Second
+        score = score + 1   # score increases by 1
+      }
+      # Base Runner on Third? YES
+      else if(base_runner[3] == 1)
+      {
+        base_runner[3] = 0 # Runner on third scores
+        score = score + 1   # score increases by 1
+        base_runner[2] = 1 # New Hitter is on Second
+      }
+    }
+    # If 3B
+    if (result == "3B") 
+    {
+      # Base Runner on Third? N0
+      if (base_runner[3] == 0 & base_runner[2] == 0){base_runner[3] = 1}
+      # Base Runner on Second? YES
+      else if(base_runner[2] == 1)
+      {
+        base_runner[2] = 0 # Runner on second scores
+        score = score + 1   # score increases by 1
+        base_runner[3] = 1 # New Hitter is on third
+      }
+      else if (base_runner[3] == 1) {
+        score = score + 1 # Runner on third scores
+        base_runner[3] = 1 # New hitter on third
+      }
+    }
+    score_tracker[i] <- score
+  }
+}
+
+mean_score_per_inning <- mean(score_tracker)
+mean_score_per_inning
+
+hist(score_tracker, main = "", xlab = "Score Per Inning")
+abline(v = mean(score_tracker), col = 'red', lwd = 4)
+box()
+
+# ------------------------------------------------------------------------------
+
+library(runexp)
+wku_probs$name[1:9] <-c('Meredith',"Derek","Callie","Alex","Arizona","Bailey",
+                        "George","April","Jackson")
+lineup <- wku_probs$name[1:9]
+sim2 <- sim(lineup, wku_probs, inn = 2, reps = 1, graphic = TRUE)
+
+```
+
