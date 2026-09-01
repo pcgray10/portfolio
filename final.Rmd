@@ -1,0 +1,258 @@
+---
+title: "Data Project 4"
+output: pdf_document
+author: "Paige Gray"
+date: "2025-12-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+library("astsa")
+library("forecast")
+
+data(taylor)
+tayTS <- taylor
+s <- 48
+```
+
+
+## Task 1
+
+Looking at the raw Taylor time series, there is some mild heteroscedasticity, but it isn’t severe. The overall pattern is very clearly non-stationary because the data has strong and repeating seasonal cycles. The dominant cycle occurs every 48 half-hour observations (one day), and the ACF/PACF plots also show significant spikes at multiples of 48 and at lag 336 (48×7), indicating a strong weekly seasonal pattern as well. When I applied a log transformation, the general structure didn’t change, the data still showed the same daily and weekly cycles, but the variability looked slightly more stable across time.
+
+```{r, echo = FALSE, out.width = "50%", comment=NA}
+par(mfrow=c(3,1))
+tsplot(tayTS, ylab="MW", main="Taylor: Half-hourly electricity demand")
+plot(ts(tayTS[1:(s*14)], frequency = s), main="First 14 days (half-hourly)", ylab="MW")
+hist(tayTS, main="Histogram of demand", xlab="MW")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,2))
+acf(tayTS, lag.max = s*14, main="ACF (raw series)")
+pacf(tayTS, lag.max = s*14, main="PACF (raw series)")
+par(mfrow=c(1,1))
+
+tsplot(log(tayTS), main="Log(taylor) variance check")
+acf(log(tayTS), main="ACF(log series)")
+```
+To explore stationarity further, I applied seasonal differencing. Differencing at lag 48 removed the daily cycle almost entirely, which is visible in the first differenced time series plot. Then I differenced at lag 336 to target the weekly pattern. After this second seasonal difference, the series no longer shows clear repeating cycles, and the ACF/PACF decays much more quickly. This suggests that the main seasonal structure has been successfully removed and that the transformed series is much closer to stationarity. Overall, the combination of visual inspection and correlation structure gives a clear picture of the underlying behavior of the data: strong daily and weekly seasonality, mild heteroscedasticity, and the need for seasonal differencing before fitting a SARIMA model.
+
+```{r, echo = FALSE, out.width = "50%", comment=NA}
+tay_d48 <- diff(tayTS, lag = s)
+tsplot(tay_d48, main = paste("Seasonally differenced (lag =", s, ")"))
+
+par(mfrow=c(1,2))
+acf(tay_d48, lag.max = s*7, main="ACF(diff, lag=48)")
+pacf(tay_d48, lag.max = s*7, main="PACF(diff, lag=48)")
+par(mfrow=c(1,1))
+
+s7 <- s*7
+tay_d336 <- diff(tayTS, lag = s7)
+tsplot(tay_d336, main = paste("Seasonally differenced (lag =", s7, ")"))
+par(mfrow=c(1,2))
+acf(tay_d336, lag.max = s*14, main="ACF(diff, lag=336)")
+pacf(tay_d336, lag.max = s*14, main="PACF(diff, lag=336)")
+par(mfrow=c(1,1))
+```
+
+## Task 2
+
+To identify a SARIMA model to use, I first tested out SARIMA(1,0,1)(0,1,1) and measured it by 48 due to the 2 day pattern in the data. I then chose SARIMA(2,0,2)(1,1,1) to expand upon my first model and see if the terms could improve. While the models are very similar, Model B ended up having better results than model A. This could mean Model A was just too restrictive on the data. 
+
+```{r, echo = FALSE, comment=NA}
+cat("\nFitting candidate A: SARIMA(1,0,1)(1,1,1)[48]\n")
+candA <- sarima(tayTS, p=1, d=0, q=1, P=1, D=1, Q=1, S=s)
+
+cat("\nFitting candidate B: SARIMA(2,0,2)(1,1,1)[48]\n")
+candB <- sarima(tayTS, p=2, d=0, q=2, P=1, D=1, Q=1, S=s)
+
+cat("\nInformation criteria (from sarima output):\n")
+print(candA$ICs)  
+print(candB$ICs)   
+
+best_sarima <- Arima(
+  tayTS,
+  order=c(2,0,2),
+  seasonal=list(order=c(1,1,1), period=s),
+  include.constant=FALSE,
+  method="ML"
+)
+```
+
+## Task 3
+
+To decide on an appropriate SARIMA model, I started by using what I observed in the exploratory analysis—mainly the strong 48-hour seasonal pattern. My first attempt was a SARIMA(1,0,1)(0,1,1) 48 model. This structure made sense as a baseline since it captures short-term AR and MA behavior while differencing to address the 2-day cycle.
+After estimating that model, I tried expanding it to SARIMA(2,0,2)(1,1,1) 48. The idea was to see if adding slightly more flexibility in the non-seasonal part would better capture the dynamics that the simpler model might be missing. Even though both models performed similarly, Model B produced slightly better fit statistics overall. This suggests that the first model may have been a bit too restrictive, and the additional parameters in the second model helped it adapt more closely to the behavior in the data.
+
+```{r, echo = FALSE, out.width = "50%", comment=NA}
+par(mfrow=c(1,1))
+tsdiag(best_sarima)                   
+acf(residuals(best_sarima), main="Residual ACF (chosen model)")
+qqnorm(residuals(best_sarima)); qqline(residuals(best_sarima))
+par(mfrow=c(1,1))
+
+lb1 <- Box.test(residuals(best_sarima), lag = 48, type = "Ljung", fitdf = length(best_sarima$coef))
+lb2 <- Box.test(residuals(best_sarima), lag = 48*3, type = "Ljung", fitdf = length(best_sarima$coef))
+cat("Ljung-Box p-values: lag=48 ->", lb1$p.value, "; lag=48*3 ->", lb2$p.value, "\n")
+
+```
+
+## Task 4
+
+To check whether my SARIMA model was stationary and invertible, I looked at the roots of the AR and MA characteristic polynomials. For a model to be stationary, all of the AR roots need to be outside the unit circle (modulus > 1), and the same rule applies to the MA roots for invertibility.
+
+In my model, the AR roots had moduli of 1.0358 and 1.3783, which are both greater than 1. The MA roots were even farther out, with moduli of 7.0685 and 7.3011. Since all of these values are above 1, the model meets both the stationarity and invertibility conditions. This means the fitted SARIMA model is well-behaved in terms of its non-seasonal dynamics and is appropriate to use for forecasting.
+
+```{r, echo = FALSE, comment=NA}
+ar_coefs <- best_sarima$coef[grep("^ar", names(best_sarima$coef))]
+if(length(ar_coefs) > 0){
+  ar_poly <- c(1, -as.numeric(ar_coefs))
+  ar_roots <- polyroot(ar_poly)
+  cat("AR polynomial roots (modulus):", round(Mod(ar_roots),4), "\n")
+  cat("All AR roots modulus > 1? ", all(Mod(ar_roots) > 1), "\n")
+} else cat("No non-seasonal AR coefficients found.\n")
+
+ma_coefs <- best_sarima$coef[grep("^ma", names(best_sarima$coef))]
+if(length(ma_coefs) > 0){
+  ma_poly <- c(1, as.numeric(ma_coefs))
+  ma_roots <- polyroot(ma_poly)
+  cat("MA polynomial roots (modulus):", round(Mod(ma_roots),4), "\n")
+  cat("All MA roots modulus > 1? ", all(Mod(ma_roots) > 1), "\n")
+} else cat("No non-seasonal MA coefficients found.\n")
+```
+
+## Task 5
+
+To assess how well the selected SARIMA model predicts future electricity demand, I produced a full one-week-ahead forecast and then ran a backtest by holding out the final week of the series. Visually, the model does a solid job capturing the overall weekly structure. The daily trends occur in roughly the right places, and the amplitude of the cycles is generally close to the observed values. However, the forecast intervals widen fairly quickly, reflecting the uncertainty that accumulates in high-frequency data. In the backtest plot, the actual values (red) fall inside the prediction bands most of the time, but there are places where the model slightly underestimates/overestimates. 
+
+```{r, echo = FALSE, out.width = "50%",comment=NA}
+h <- s*7
+fc <- forecast(best_sarima, h = h)
+plot(fc, main="One-week ahead forecast (half-hourly)")
+
+n <- length(tayTS)
+if(n > h){
+  train <- tayTS[1:(n - h)]
+  test  <- tayTS[(n - h + 1):n]
+  train_fit <- Arima(train, model = best_sarima)  # refit same structure on train
+  pred <- forecast(train_fit, h = h)
+  plot(pred, main = "Backtest: Forecast vs Actual (one-week)")
+  lines(ts(test, start = tsp(pred$mean)[1], frequency = s), col="red")
+  acc <- accuracy(pred, test)
+  print(acc)  
+} else {
+  cat("Not enough observations to hold out a full week.\n")
+}
+
+```
+
+## Task 6
+
+SARIMA is generally a reasonable starting point for electricity-demand data because the series is strongly seasonal, highly regular, and displays predictable daily and weekly cycles. The model handles these repeating patterns well, especially after applying a seasonal difference at lag 48. In my analysis, the fitted SARIMA captured the main seasonal structure and produced stable forecasts that remained stationary, indicating a well-behaved model. However, half-hourly electricity data also contain features that SARIMA is not designed to capture, such as sudden spikes due to weather, holidays, or unusual usage patterns. These effects are nonlinear and sometimes require more flexible models. So while SARIMA performs reasonably well for smoothing and forecasting the general pattern, it is not the best option for capturing rapid short-term fluctuations or irregular behaviors.
+
+
+### Appendix
+
+```{r, eval=FALSE}
+
+#**ChatGPT was used to clean up writing, make it more concise, 
+#*and help fix my logic for task 4
+#**"Can you clean up and shorten my writing"
+
+#Task 1: Analyze the time series to learn its features 
+par(mfrow=c(3,1))
+tsplot(tayTS, ylab="MW", main="Taylor: Half-hourly electricity demand")
+plot(ts(tayTS[1:(s*14)], frequency = s), main="First 14 days (half-hourly)", ylab="MW")
+hist(tayTS, main="Histogram of demand", xlab="MW")
+par(mfrow=c(1,1))
+par(mfrow=c(1,2))
+acf(tayTS, lag.max = s*14, main="ACF (raw series)")
+pacf(tayTS, lag.max = s*14, main="PACF (raw series)")
+par(mfrow=c(1,1))
+tsplot(log(tayTS), main="Log(taylor) variance check")
+acf(log(tayTS), main="ACF(log series)")
+tay_d48 <- diff(tayTS, lag = s)
+tsplot(tay_d48, main = paste("Seasonally differenced (lag =", s, ")"))
+par(mfrow=c(1,2))
+acf(tay_d48, lag.max = s*7, main="ACF(diff, lag=48)")
+pacf(tay_d48, lag.max = s*7, main="PACF(diff, lag=48)")
+par(mfrow=c(1,1))
+s7 <- s*7
+tay_d336 <- diff(tayTS, lag = s7)
+tsplot(tay_d336, main = paste("Seasonally differenced (lag =", s7, ")"))
+par(mfrow=c(1,2))
+acf(tay_d336, lag.max = s*14, main="ACF(diff, lag=336)")
+pacf(tay_d336, lag.max = s*14, main="PACF(diff, lag=336)")
+par(mfrow=c(1,1))
+
+#Task 2: Identify and estimate a SARIMA model on the data
+cat("\nFitting candidate A: SARIMA(1,0,1)(1,1,1)[48]\n")
+candA <- sarima(tayTS, p=1, d=0, q=1, P=1, D=1, Q=1, S=s)
+cat("\nFitting candidate B: SARIMA(2,0,2)(1,1,1)[48]\n")
+candB <- sarima(tayTS, p=2, d=0, q=2, P=1, D=1, Q=1, S=s)
+cat("\nInformation criteria (from sarima output):\n")
+print(candA$ICs)  
+print(candB$ICs)   
+best_sarima <- Arima(
+  tayTS,
+  order=c(2,0,2),
+  seasonal=list(order=c(1,1,1), period=s),
+  include.constant=FALSE,
+  method="ML"
+)
+
+#Task 3: Validate the fitted SARIMA model on the data 
+#(depending on the model you selected, you may not be able to calculate the theoretical ACF)
+par(mfrow=c(1,1))
+tsdiag(best_sarima)                   
+acf(residuals(best_sarima), main="Residual ACF (chosen model)")
+qqnorm(residuals(best_sarima)); qqline(residuals(best_sarima))
+par(mfrow=c(1,1))
+lb1 <- Box.test(residuals(best_sarima), lag = 48, type = "Ljung", 
+                fitdf = length(best_sarima$coef))
+lb2 <- Box.test(residuals(best_sarima), lag = 48*3, type = "Ljung", 
+                fitdf = length(best_sarima$coef))
+cat("Ljung-Box p-values: lag=48 ->", lb1$p.value, "; lag=48*3 ->", lb2$p.value, "\n")
+
+#Task 4: Discuss the stationarity and invertibility of the fitted model
+ar_coefs <- best_sarima$coef[grep("^ar", names(best_sarima$coef))]
+if(length(ar_coefs) > 0){
+  ar_poly <- c(1, -as.numeric(ar_coefs))
+  ar_roots <- polyroot(ar_poly)
+  cat("AR polynomial roots (modulus):", round(Mod(ar_roots),4), "\n")
+  cat("All AR roots modulus > 1? ", all(Mod(ar_roots) > 1), "\n")
+} else cat("No non-seasonal AR coefficients found.\n")
+ma_coefs <- best_sarima$coef[grep("^ma", names(best_sarima$coef))]
+if(length(ma_coefs) > 0){
+  ma_poly <- c(1, as.numeric(ma_coefs))
+  ma_roots <- polyroot(ma_poly)
+  cat("MA polynomial roots (modulus):", round(Mod(ma_roots),4), "\n")
+  cat("All MA roots modulus > 1? ", all(Mod(ma_roots) > 1), "\n")
+} else cat("No non-seasonal MA coefficients found.\n")
+
+#Task 5: Perform a one-week ahead forecast and discuss the forecast quality
+h <- s*7
+fc <- forecast(best_sarima, h = h)
+plot(fc, main="One-week ahead forecast (half-hourly)")
+n <- length(tayTS)
+if(n > h){
+  train <- tayTS[1:(n - h)]
+  test  <- tayTS[(n - h + 1):n]
+  train_fit <- Arima(train, model = best_sarima)  # refit same structure on train
+  pred <- forecast(train_fit, h = h)
+  plot(pred, main = "Backtest: Forecast vs Actual (one-week)")
+  lines(ts(test, start = tsp(pred$mean)[1], frequency = s), col="red")
+  acc <- accuracy(pred, test)
+  print(acc)  
+} else {
+  cat("Not enough observations to hold out a full week.\n")
+}
+
+#Task 6:Discuss the overall appropriateness of a SARIMA model for this type of data.
+#Did not require code
+```
+
